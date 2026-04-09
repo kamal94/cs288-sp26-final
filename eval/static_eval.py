@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -198,6 +199,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Logging verbosity for runtime progress and timing.",
     )
+    parser.add_argument(
+        "--include_question",
+        action="store_true",
+        default=False,
+        help="Include the question text in the output CSV (default: false).",
+    )
     return parser
 
 
@@ -209,6 +216,8 @@ def main() -> int:
         raise ValueError("--num_turns must be >= 1.")
 
     started = time.perf_counter()
+    run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    output_csv: Path = args.output_csv.with_stem(f"{args.output_csv.stem}_{run_ts}")
     logger.info(
         "Loading input CSV from %s (provider=%s model=%s dry_run=%s)",
         args.input_csv,
@@ -278,23 +287,22 @@ def main() -> int:
 
             out = {
                 "conversation_id": result["conversation_id"],
-                "question": question,
                 "correct_answer": correct_answer,
                 "static_type": static_type,
             }
+            if args.include_question:
+                out["question"] = question
             for idx, answer in enumerate(result["turn_answers"], start=1):
                 out[f"turn_{idx}_answer"] = answer
             output_rows.append(out)
 
-    fieldnames = [
-        "conversation_id",
-        "question",
-        "correct_answer",
-        "static_type",
-    ]
+    fieldnames = ["conversation_id"]
+    if args.include_question:
+        fieldnames.append("question")
+    fieldnames += ["correct_answer", "static_type"]
     fieldnames.extend([f"turn_{idx}_answer" for idx in range(1, args.num_turns + 1)])
-    write_rows_csv(args.output_csv, fieldnames=fieldnames, rows=output_rows)
-    logger.info("Wrote aggregate CSV to %s with %s rows", args.output_csv, len(output_rows))
+    write_rows_csv(output_csv, fieldnames=fieldnames, rows=output_rows)
+    logger.info("Wrote aggregate CSV to %s with %s rows", output_csv, len(output_rows))
     logger.info("Total runtime: %.2fs", time.perf_counter() - started)
     return 0
 
