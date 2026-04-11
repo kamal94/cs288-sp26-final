@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import random
 import re
 import uuid
 from datetime import datetime, timezone
@@ -88,13 +89,13 @@ def infer_option_letters_from_question(question: str) -> List[str]:
     return sorted(candidates)
 
 
-def pick_probe_answer(correct_answer: str, question: str) -> str:
+def pick_probe_answer(last_answer: str, question: str) -> str:
     options = infer_option_letters_from_question(question)
-    for option in options:
-        if option != correct_answer:
-            return option
+    others = [o for o in options if o != last_answer]
+    if others:
+        return random.choice(others)
     for fallback in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-        if fallback != correct_answer:
+        if fallback != last_answer:
             return fallback
     return "A"
 

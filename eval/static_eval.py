@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -72,17 +73,16 @@ def run_conversation(
 ) -> Dict[str, Any]:
     conv_started = time.perf_counter()
     conversation_id = short_uuid()
-    probe_answer = pick_probe_answer(correct_answer, question)
     started_at = utc_now_iso()
     logger.info(
-        "[%s] Starting conversation static_type=%s probe_answer=%s",
+        "[%s] Starting conversation static_type=%s",
         conversation_id,
         static_type,
-        probe_answer,
     )
 
     messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
     turn_answers: List[str] = []
+    probe_answers: List[str | None] = []
     turn_logs: List[Dict[str, Any]] = []
 
     for turn in range(1, num_turns + 1):
@@ -90,11 +90,14 @@ def run_conversation(
         if turn == 1:
             user_prompt = build_turn1_prompt(question)
             followup_used = None
+            probe_answer = None
         else:
+            probe_answer = pick_probe_answer(turn_answers[-1], question)
             followup_used = get_followup_prompt(
                 static_type=static_type, turn_index=turn - 1, suggested_answer=probe_answer
             )
             user_prompt = build_turn_prompt(question, followup_used)
+        probe_answers.append(probe_answer)
 
         messages.append({"role": "user", "content": user_prompt})
         request_payload = {
@@ -142,6 +145,7 @@ def run_conversation(
             {
                 "turn": turn,
                 "static_type": static_type,
+                "probe_answer": probe_answer,
                 "followup_prompt": followup_used,
                 "request": request_payload,
                 "response": {"text": raw_text, "raw": raw_response},
@@ -162,7 +166,7 @@ def run_conversation(
         "correct_answer": correct_answer,
         "static_type": static_type,
         "turn_answers": turn_answers,
-        "probe_answer": probe_answer,
+        "probe_answers": probe_answers,
         "started_at_utc": started_at,
         "ended_at_utc": ended_at,
         "turn_logs": turn_logs,
@@ -198,6 +202,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Logging verbosity for runtime progress and timing.",
     )
+    parser.add_argument(
+        "--include_question",
+        action="store_true",
+        default=False,
+        help="Include the question text in the output CSV (default: false).",
+    )
     return parser
 
 
@@ -209,6 +219,8 @@ def main() -> int:
         raise ValueError("--num_turns must be >= 1.")
 
     started = time.perf_counter()
+    run_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    output_csv: Path = args.output_csv.with_stem(f"{args.output_csv.stem}_{run_ts}")
     logger.info(
         "Loading input CSV from %s (provider=%s model=%s dry_run=%s)",
         args.input_csv,
@@ -267,7 +279,6 @@ def main() -> int:
                 "question": question,
                 "correct_answer": correct_answer,
                 "static_type": static_type,
-                "probe_answer": result["probe_answer"],
                 "started_at_utc": result["started_at_utc"],
                 "ended_at_utc": result["ended_at_utc"],
                 "turns": result["turn_logs"],
@@ -278,23 +289,26 @@ def main() -> int:
 
             out = {
                 "conversation_id": result["conversation_id"],
-                "question": question,
                 "correct_answer": correct_answer,
                 "static_type": static_type,
             }
+            if args.include_question:
+                out["question"] = question
             for idx, answer in enumerate(result["turn_answers"], start=1):
                 out[f"turn_{idx}_answer"] = answer
+            for idx, probe in enumerate(result["probe_answers"], start=1):
+                out[f"turn_{idx}_probe"] = probe if probe is not None else ""
             output_rows.append(out)
 
-    fieldnames = [
-        "conversation_id",
-        "question",
-        "correct_answer",
-        "static_type",
-    ]
-    fieldnames.extend([f"turn_{idx}_answer" for idx in range(1, args.num_turns + 1)])
-    write_rows_csv(args.output_csv, fieldnames=fieldnames, rows=output_rows)
-    logger.info("Wrote aggregate CSV to %s with %s rows", args.output_csv, len(output_rows))
+    fieldnames = ["conversation_id"]
+    if args.include_question:
+        fieldnames.append("question")
+    fieldnames += ["correct_answer", "static_type"]
+    for idx in range(1, args.num_turns + 1):
+        fieldnames.append(f"turn_{idx}_answer")
+        fieldnames.append(f"turn_{idx}_probe")
+    write_rows_csv(output_csv, fieldnames=fieldnames, rows=output_rows)
+    logger.info("Wrote aggregate CSV to %s with %s rows", output_csv, len(output_rows))
     logger.info("Total runtime: %.2fs", time.perf_counter() - started)
     return 0
 
