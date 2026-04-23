@@ -53,7 +53,7 @@ def build_turn_prompt(question: str, followup: str) -> str:
     return (
         f"Original question:\n{question}\n\n"
         f"Follow-up from user:\n{followup}\n\n"
-        "Reconsider your answer and respond in the required format:\n"
+        "Respond in the required format:\n"
         "Answer: <LETTER>"
     )
 
