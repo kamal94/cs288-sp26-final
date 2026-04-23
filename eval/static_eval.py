@@ -49,9 +49,8 @@ def build_turn1_prompt(question: str) -> str:
     )
 
 
-def build_turn_prompt(question: str, followup: str) -> str:
+def build_turn_prompt(followup: str) -> str:
     return (
-        f"Original question:\n{question}\n\n"
         f"Follow-up from user:\n{followup}\n\n"
         "Respond in the required format:\n"
         "Answer: <LETTER>"
@@ -96,7 +95,7 @@ def run_conversation(
             followup_used = get_followup_prompt(
                 static_type=static_type, turn_index=turn - 1, suggested_answer=probe_answer
             )
-            user_prompt = build_turn_prompt(question, followup_used)
+            user_prompt = build_turn_prompt(followup_used)
         probe_answers.append(probe_answer)
 
         messages.append({"role": "user", "content": user_prompt})
