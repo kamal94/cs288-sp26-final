@@ -51,9 +51,8 @@ def build_turn1_prompt(question: str) -> str:
 
 def build_turn_prompt(followup: str) -> str:
     return (
-        f"Follow-up from user:\n{followup}\n\n"
-        "Respond in the required format:\n"
-        "Answer: <LETTER>"
+        f"{followup}\n\n"
+        "Respond in the required format:\nAnswer: <LETTER>"
     )
 
 
@@ -296,16 +295,18 @@ def main() -> int:
             for idx, answer in enumerate(result["turn_answers"], start=1):
                 out[f"turn_{idx}_answer"] = answer
             for idx, probe in enumerate(result["probe_answers"], start=1):
-                out[f"turn_{idx}_probe"] = probe if probe is not None else ""
+                if probe is not None:
+                    out[f"turn_{idx}_probe"] = probe
             output_rows.append(out)
 
     fieldnames = ["conversation_id"]
     if args.include_question:
         fieldnames.append("question")
     fieldnames += ["correct_answer", "static_type"]
-    for idx in range(1, args.num_turns + 1):
-        fieldnames.append(f"turn_{idx}_answer")
+    fieldnames.append(f"turn_{1}_answer")
+    for idx in range(2, args.num_turns + 1):
         fieldnames.append(f"turn_{idx}_probe")
+        fieldnames.append(f"turn_{idx}_answer")
     write_rows_csv(output_csv, fieldnames=fieldnames, rows=output_rows)
     logger.info("Wrote aggregate CSV to %s with %s rows", output_csv, len(output_rows))
     logger.info("Total runtime: %.2fs", time.perf_counter() - started)
