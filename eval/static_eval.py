@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -16,7 +19,6 @@ from eval.io_utils import (
     short_uuid,
     utc_now_iso,
     write_json,
-    write_rows_csv,
 )
 from eval.providers import ProviderError, create_provider, provider_metadata
 from eval.static_prompts import STATIC_TYPES, get_followup_prompt
@@ -195,6 +197,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Number of conversation turns to run (default: 7).",
     )
     parser.add_argument(
+        "--max_workers",
+        type=int,
+        default=1,
+        help="Number of parallel threads for processing rows (default: 1, sequential).",
+    )
+    parser.add_argument(
         "--log_level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -242,18 +250,37 @@ def main() -> int:
             time.perf_counter() - provider_init_started,
         )
 
-    output_rows: List[Dict[str, Any]] = []
+    fieldnames = ["conversation_id"]
+    if args.include_question:
+        fieldnames.append("question")
+    fieldnames += ["correct_answer", "static_type"]
+    fieldnames.append("turn_1_answer")
+    for idx in range(2, args.num_turns + 1):
+        fieldnames.append(f"turn_{idx}_probe")
+        fieldnames.append(f"turn_{idx}_answer")
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    with output_csv.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
     total_conversations = len(rows) * len(STATIC_TYPES)
+    csv_lock = threading.Lock()
+    progress_lock = threading.Lock()
     completed_conversations = 0
-    for row_index, row in enumerate(rows, start=1):
+
+    def process_row(row_index: int, row: Dict[str, str]) -> None:
+        nonlocal completed_conversations
         question = row["question"]
         correct_answer = row["correct_answer"]
         logger.info("Processing question %s/%s", row_index, len(rows))
         for static_type in STATIC_TYPES:
-            completed_conversations += 1
+            with progress_lock:
+                completed_conversations += 1
+                current = completed_conversations
             logger.info(
                 "Running conversation %s/%s for static_type=%s",
-                completed_conversations,
+                current,
                 total_conversations,
                 static_type,
             )
@@ -297,18 +324,20 @@ def main() -> int:
             for idx, probe in enumerate(result["probe_answers"], start=1):
                 if probe is not None:
                     out[f"turn_{idx}_probe"] = probe
-            output_rows.append(out)
+            with csv_lock:
+                with output_csv.open("a", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writerow(out)
 
-    fieldnames = ["conversation_id"]
-    if args.include_question:
-        fieldnames.append("question")
-    fieldnames += ["correct_answer", "static_type"]
-    fieldnames.append(f"turn_{1}_answer")
-    for idx in range(2, args.num_turns + 1):
-        fieldnames.append(f"turn_{idx}_probe")
-        fieldnames.append(f"turn_{idx}_answer")
-    write_rows_csv(output_csv, fieldnames=fieldnames, rows=output_rows)
-    logger.info("Wrote aggregate CSV to %s with %s rows", output_csv, len(output_rows))
+    with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
+        futures = {
+            executor.submit(process_row, row_index, row): row_index
+            for row_index, row in enumerate(rows, start=1)
+        }
+        for future in as_completed(futures):
+            future.result()
+
+    logger.info("Wrote aggregate CSV to %s", output_csv)
     logger.info("Total runtime: %.2fs", time.perf_counter() - started)
     return 0
 
