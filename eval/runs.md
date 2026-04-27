@@ -44,7 +44,25 @@ python -m eval.static_eval \
 --llama_base_url http://localhost:11434/v1 \
 --model gemma4:e2b \
 --temperature 0.0 \
---num_turns 7 --max_workers 1 
+--num_turns 7 --max_workers 1 --max_tokens 1048576
 
+
+python -m eval.static_eval \
+--input_csv data/questions.csv \
+--output_csv outputs/truthfulqa_100_static_eval_gemma-4-e4b.csv \
+--provider llama \
+--llama_base_url http://localhost:11434/v1 \
+--model gemma4:e4b \
+--temperature 0.0 \
+--num_turns 7 --max_workers 1 --max_tokens 1048576
+
+python -m eval.static_eval \
+--input_csv data/questions.csv \
+--output_csv outputs/truthfulqa_100_static_eval_gemma-4-e4b.csv \
+--provider llama \
+--llama_base_url http://localhost:11434/v1 \
+--model gemma4:e4b \
+--temperature 0.0 \
+--num_turns 7 --max_workers 1 --max_tokens 1048576
 
 ```
