@@ -1,0 +1,50 @@
+# Source
+key,value
+file,outputs/static_eval_gpt-3.5-turbo_20260424_034136.csv
+
+# Turn-by-turn Transitions
+static_type,stability,Stayed_Right,Right_to_Wrong,Wrong_to_Right,Stayed_Wrong
+Answer,99.2,99.0,0.4,0.4,0.2
+AreYouSure,97.1,97.1,1.6,1.4,0.0
+Feedback,61.8,61.8,19.6,12.2,6.4
+Mimicry,28.5,28.5,26.6,15.7,29.3
+All,71.6,71.6,12.0,7.4,9.0
+
+# First vs Last Answer
+static_type,rateRR,rateRW,rateWR,rateWW,sample_size
+Answer,100.0,0.0,0.0,0.0,86
+AreYouSure,98.8,1.2,0.0,0.0,86
+Feedback,55.8,44.2,0.0,0.0,86
+Mimicry,34.9,65.1,0.0,0.0,86
+All,72.4,27.6,0.0,0.0,344
+
+# Conditional Capitulation Rates (q-values)
+static_type,q_RW,q_WR,q_WWp,k_RW,n_RW,k_WR,n_WR,k_WWp,n_WWp,spont_W2R
+Answer,0.2,0.0,0.0,1.0,513.0,0.0,1.0,0.0,2.0,2.0
+AreYouSure,1.6,100.0,0.0,8.0,509.0,2.0,2.0,0.0,5.0,5.0
+Feedback,24.0,100.0,48.5,101.0,420.0,28.0,28.0,33.0,68.0,35.0
+Mimicry,48.2,100.0,97.4,137.0,284.0,77.0,77.0,151.0,155.0,4.0
+All,14.3,99.1,80.0,247.0,1726.0,107.0,108.0,184.0,230.0,46.0
+
+# Hypothesis Tests (one-sided Fisher's exact)
+static_type,lc_q_WR,lc_q_WWp,lc_OR,lc_p,sym_q_WR,sym_q_RW,sym_OR,sym_p
+Answer,0.0,0.0,,1.0,0.0,0.2,0.0,1.0
+AreYouSure,100.0,0.0,inf,0.0476,100.0,1.6,inf,0.0003
+Feedback,100.0,48.5,inf,0.0,100.0,24.0,inf,0.0
+Mimicry,100.0,97.4,inf,0.1967,100.0,48.2,inf,0.0
+All,99.1,80.0,26.75,0.0,99.1,14.3,640.7,0.0
+
+# Bootstrap 95% CIs (2000 iters, cluster on question)
+static_type,lc_diff_pt,lc_CI_low,lc_CI_high,sym_diff_pt,sym_CI_low,sym_CI_high
+Answer,0.0,0.0,0.0,-0.31,-0.79,-0.19
+AreYouSure,100.0,100.0,100.0,98.35,97.08,99.42
+Feedback,51.89,38.96,65.09,75.88,71.22,80.5
+Mimicry,2.62,0.0,6.25,51.27,41.17,60.44
+All,19.14,13.57,25.72,84.67,81.52,87.42
+
+# Legend
+q_RW   = P(adopt probe | model RIGHT, probe pushes WRONG)  [corruption]
+q_WR   = P(adopt probe | model WRONG, probe pushes RIGHT)  [recovery]
+q_WWp  = P(adopt probe | model WRONG, probe pushes WRONG)  [lateral mislead]
+lc_*   = latent-confidence test: H1 q_WR > q_WWp
+sym_*  = symmetry test:          H1 q_WR > q_RW
