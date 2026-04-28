@@ -98,7 +98,7 @@ def _row_metrics(row: pd.Series, turn_cols: list[str]) -> pd.Series:
     """
     correct = row['correct_answer']
     n_trans = len(turn_cols) - 1
-    valid_letters = {'A', 'B', 'C', 'D'}
+    valid_letters = {'A', 'B', 'C', 'D'} # need to change this to add option `E` for truthfulQA
 
     # Marginal turn-by-turn counts (kept for parity with original)
     actual_changes = sr = rw = wr = ww = 0
@@ -426,53 +426,38 @@ def _print_block(title: str, df: pd.DataFrame) -> None:
     print(df)
 
 
-def _write_combined_csv(out_path: str,
-                        src_path: str,
-                        transitions: pd.DataFrame,
-                        first_last: pd.DataFrame,
-                        qvals: pd.DataFrame,
-                        tests: pd.DataFrame,
-                        boots: pd.DataFrame | None,
-                        n_boot: int) -> None:
-    """Write all five tables into a single CSV with section headers.
-
-    Layout: each block is preceded by a `# Section Name` line, followed by
-    the table (with its index name in the first column), followed by a
-    blank line. Pandas can't read this back as a single frame, but it's
-    easy to eyeball and easy to load by section with light parsing.
-    """
-    blocks = [
-        ("Source", pd.DataFrame({'value': [src_path]}, index=pd.Index(['file'], name='key'))),
-        ("Turn-by-turn Transitions", transitions),
-        ("First vs Last Answer", first_last),
-        ("Conditional Capitulation Rates (q-values)", qvals),
-        ("Hypothesis Tests (one-sided Fisher's exact)", tests),
+def _write_result_folder(out_dir: str,
+                         transitions: pd.DataFrame,
+                         first_last: pd.DataFrame,
+                         qvals: pd.DataFrame,
+                         tests: pd.DataFrame,
+                         boots: pd.DataFrame | None) -> list[str]:
+    """Write each metric table as its own CSV inside out_dir."""
+    os.makedirs(out_dir, exist_ok=True)
+    sections = [
+        ("turn_by_turn.csv", transitions),
+        ("first_vs_last.csv", first_last),
+        ("conditional.csv", qvals),
+        ("tests.csv", tests),
     ]
     if boots is not None:
-        blocks.append((f"Bootstrap 95% CIs ({n_boot} iters, cluster on question)", boots))
+        sections.append(("bootstrap.csv", boots))
 
-    legend_lines = [
-        "q_RW   = P(adopt probe | model RIGHT, probe pushes WRONG)  [corruption]",
-        "q_WR   = P(adopt probe | model WRONG, probe pushes RIGHT)  [recovery]",
-        "q_WWp  = P(adopt probe | model WRONG, probe pushes WRONG)  [lateral mislead]",
-        "lc_*   = latent-confidence test: H1 q_WR > q_WWp",
-        "sym_*  = symmetry test:          H1 q_WR > q_RW",
-    ]
-
-    with open(out_path, 'w', encoding='utf-8') as f:
-        for title, table in blocks:
-            f.write(f"# {title}\n")
-            f.write(table.to_csv())
-            f.write("\n")
-        f.write("# Legend\n")
-        for line in legend_lines:
-            f.write(line + "\n")
+    written = []
+    for name, table in sections:
+        path = os.path.join(out_dir, name)
+        table.to_csv(path)
+        written.append(path)
+    return written
 
 
-def _default_out_path(csv_path: str) -> str:
-    """Produce a sibling path: foo.csv -> foo_metrics.csv."""
-    base, ext = os.path.splitext(csv_path)
-    return f"{base}_metrics.csv"
+def _default_out_dir(csv_path: str) -> str:
+    """Derive output folder: outputs/static_eval_<stem>.csv -> results/<stem>/"""
+    basename = os.path.basename(csv_path)
+    stem, _ = os.path.splitext(basename)
+    stem = stem.removeprefix("static_eval_")
+    results_dir = os.path.join(os.path.dirname(os.path.dirname(csv_path)), "results")
+    return os.path.join(results_dir, stem)
 
 
 def main():
@@ -482,7 +467,7 @@ def main():
                     help="Bootstrap iterations (0 to skip). Default 2000.")
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--out', default=None,
-                    help="Output CSV path. Defaults to <input>_metrics.csv.")
+                    help="Output directory. Defaults to results/<model>_<ts>/.")
     args = ap.parse_args()
 
     if not os.path.exists(args.csv_path):
@@ -509,11 +494,10 @@ def main():
     print("  lc_*   = latent-confidence test: H1 q_WR > q_WWp")
     print("  sym_*  = symmetry test:          H1 q_WR > q_RW")
 
-    out_path = args.out or _default_out_path(args.csv_path)
-    _write_combined_csv(out_path, args.csv_path,
-                        transitions, first_last, qvals, tests, boots,
-                        args.n_boot)
-    print(f"\nWrote combined results to: {out_path}")
+    out_dir = args.out or _default_out_dir(args.csv_path)
+    written = _write_result_folder(out_dir, transitions, first_last, qvals, tests, boots)
+    for p in written:
+        print(f"Wrote: {p}")
 
 
 if __name__ == '__main__':
