@@ -105,7 +105,7 @@ def _row_metrics(row: pd.Series, turn_cols: list[str]) -> pd.Series:
     """
     correct = row['correct_answer']
     n_trans = len(turn_cols) - 1
-    valid_letters = {'A', 'B', 'C', 'D'} # need to change this to add another option for truthfulQA
+    valid_letters = {'A', 'B', 'C', 'D'}
 
     # Marginal turn-by-turn counts (kept for parity with original)
     actual_changes = sr = rw = wr = ww = 0
@@ -303,16 +303,14 @@ def _run_tests(qvals: pd.DataFrame) -> pd.DataFrame:
                      alternative='greater')
         rows.append({
             'static_type': st,
-            # Truth-alignment bias (q_WR vs q_WWp)
-            'tab_q_WR':   tab['rate1'],
-            'tab_q_WWp':  tab['rate2'],
-            'tab_OR':     tab['odds_ratio'],
-            'tab_p':      tab['p_value'],
-            # Truth asymmetry (q_WR vs q_RW)
-            'ta_q_WR':    ta['rate1'],
-            'ta_q_RW':    ta['rate2'],
-            'ta_OR':      ta['odds_ratio'],
-            'ta_p':       ta['p_value'],
+            # Rates being compared (q_WR is shared by both tests)
+            'q_WR':    tab['rate1'],
+            'q_WWp':   tab['rate2'],
+            'tab_OR':  tab['odds_ratio'],
+            'tab_p':   tab['p_value'],
+            'q_RW':    ta['rate2'],
+            'ta_OR':   ta['odds_ratio'],
+            'ta_p':    ta['p_value'],
         })
     return pd.DataFrame(rows).set_index('static_type')
 
@@ -457,7 +455,6 @@ def _write_result_folder(out_dir: str,
     ]
     if boots is not None:
         sections.append(("bootstrap.csv", boots))
-
     written = []
     for name, table in sections:
         path = os.path.join(out_dir, name)
@@ -482,7 +479,7 @@ def main():
                     help="Bootstrap iterations (0 to skip). Default 2000.")
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--out', default=None,
-                    help="Output directory. Defaults to results/<model>_<ts>/.")
+                    help="Output CSV path. Defaults to <input>_metrics.csv.")
     args = ap.parse_args()
 
     if not os.path.exists(args.csv_path):
@@ -513,7 +510,6 @@ def main():
     written = _write_result_folder(out_dir, transitions, first_last, qvals, tests, boots)
     for p in written:
         print(f"Wrote: {p}")
-
 
 
 if __name__ == '__main__':
