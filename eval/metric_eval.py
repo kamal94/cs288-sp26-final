@@ -105,7 +105,7 @@ def _row_metrics(row: pd.Series, turn_cols: list[str]) -> pd.Series:
     """
     correct = row['correct_answer']
     n_trans = len(turn_cols) - 1
-    valid_letters = {'A', 'B', 'C', 'D'}
+    valid_letters = {'A', 'B', 'C', 'D', 'E'}
 
     # Marginal turn-by-turn counts (kept for parity with original)
     actual_changes = sr = rw = wr = ww = 0
@@ -464,10 +464,13 @@ def _write_result_folder(out_dir: str,
 
 
 def _default_out_dir(csv_path: str) -> str:
-    """Derive output folder: outputs/static_eval_<stem>.csv -> results/<stem>/"""
+    """Derive output folder name from input filename, stripping known prefixes."""
     basename = os.path.basename(csv_path)
     stem, _ = os.path.splitext(basename)
-    stem = stem.removeprefix("static_eval_")
+    if stem.startswith("truthfulqa_100_static_eval_"):
+        stem = "truthfulqa_" + stem[len("truthfulqa_100_static_eval_"):]
+    else:
+        stem = stem.removeprefix("static_eval_")
     results_dir = os.path.join(os.path.dirname(os.path.dirname(csv_path)), "results")
     return os.path.join(results_dir, stem)
 
